@@ -31,19 +31,29 @@ async function main() {
 async function getStravaToken() {
   // default env vars
   let cache = {
-    // stravaAccessToken: stravaAccessToken,
+    stravaAccessToken: stravaAccessToken,
     stravaRefreshToken: stravaRefreshToken
   };
-  // read cache from disk
+
+  // read cache from disk if it exists
   try {
-    const jsonStr = fs.readFileSync(AUTH_CACHE_FILE);
-    const c = JSON.parse(jsonStr);
-    Object.keys(c).forEach(key => {
-      cache[key] = c[key];
-    });
+    if (fs.existsSync(AUTH_CACHE_FILE)) {
+      const jsonStr = fs.readFileSync(AUTH_CACHE_FILE);
+      const c = JSON.parse(jsonStr);
+      Object.keys(c).forEach(key => {
+        cache[key] = c[key];
+      });
+    }
   } catch (error) {
-    console.log(error);
+    console.log(`Error reading auth cache: ${error}`);
+    // Continue with environment variables
   }
+
+  // Validate we have a refresh token before trying to use it
+  if (!cache.stravaRefreshToken) {
+    throw new Error("No Strava refresh token available. Check your environment variables.");
+  }
+
   console.debug(`ref: ${cache.stravaRefreshToken.substring(0, 6)}`);
 
   // get new tokens
@@ -59,10 +69,22 @@ async function getStravaToken() {
   }).then(
     data => data.json()
   );
+
+  // Ensure we got valid tokens back
+  if (!data.access_token || !data.refresh_token) {
+    throw new Error("Failed to refresh Strava tokens: " + JSON.stringify(data));
+  }
+
   cache.stravaAccessToken = data.access_token;
   cache.stravaRefreshToken = data.refresh_token;
   console.debug(`acc: ${cache.stravaAccessToken.substring(0, 6)}`);
   console.debug(`ref: ${cache.stravaRefreshToken.substring(0, 6)}`);
+
+  // Create directory if needed
+  const dir = require('path').dirname(AUTH_CACHE_FILE);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 
   // save to disk
   fs.writeFileSync(AUTH_CACHE_FILE, JSON.stringify(cache));
