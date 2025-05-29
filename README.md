@@ -30,7 +30,7 @@ This repo is based off of [matchai's waka-box](https://github.com/matchai/waka-b
 1. Add the following environment variables:
 
 - **GIST_ID:** The ID portion from your gist url `https://gist.github.com/<github username>/`**`6d5f84419863089a167387da62dd7081`**.
-- **GITHUB_TOKEN:** The GitHub token generated above.
+- **GH_TOKEN:** The GitHub token generated above.
 - **STRAVA_ATHLETE_ID:** The ID you got from visiting your profile page.
 - **STRAVA_CLIENT_ID:** The client ID you got from the Strava API page.
 - **STRAVA_CLIENT_SECRET:** The client secret you got from the Strava API page.

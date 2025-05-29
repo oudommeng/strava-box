@@ -5,7 +5,7 @@ const fs = require("fs");
 
 const {
   GIST_ID: gistId,
-  GITHUB_TOKEN: githubToken,
+  GH_TOKEN: githubToken,
   STRAVA_ATHLETE_ID: stravaAtheleteId,
   STRAVA_ACCESS_TOKEN: stravaAccessToken,
   STRAVA_REFRESH_TOKEN: stravaRefreshToken,
@@ -28,7 +28,7 @@ async function main() {
 /**
  * Updates cached strava authentication tokens if necessary
  */
-async function getStravaToken(){
+async function getStravaToken() {
   // default env vars
   let cache = {
     // stravaAccessToken: stravaAccessToken,
@@ -44,7 +44,7 @@ async function getStravaToken(){
   } catch (error) {
     console.log(error);
   }
-  console.debug(`ref: ${cache.stravaRefreshToken.substring(0,6)}`);
+  console.debug(`ref: ${cache.stravaRefreshToken.substring(0, 6)}`);
 
   // get new tokens
   const data = await fetch("https://www.strava.com/oauth/token", {
@@ -55,14 +55,14 @@ async function getStravaToken(){
       client_secret: stravaClientSecret,
       refresh_token: cache.stravaRefreshToken
     }),
-    headers: {'Content-Type': 'application/json'},
+    headers: { 'Content-Type': 'application/json' },
   }).then(
     data => data.json()
   );
   cache.stravaAccessToken = data.access_token;
   cache.stravaRefreshToken = data.refresh_token;
-  console.debug(`acc: ${cache.stravaAccessToken.substring(0,6)}`);
-  console.debug(`ref: ${cache.stravaRefreshToken.substring(0,6)}`);
+  console.debug(`acc: ${cache.stravaAccessToken.substring(0, 6)}`);
+  console.debug(`ref: ${cache.stravaRefreshToken.substring(0, 6)}`);
 
   // save to disk
   fs.writeFileSync(AUTH_CACHE_FILE, JSON.stringify(cache));
@@ -147,26 +147,22 @@ async function updateGist(data) {
   let monthDistance = 0;
   let monthTime = 0;
   let monthAchievements = 0;
-  for (let [key, value] of Object.entries(data)){
-    if (key.startsWith("recent_") && key.endsWith("_totals")){
+  for (let [key, value] of Object.entries(data)) {
+    if (key.startsWith("recent_") && key.endsWith("_totals")) {
       monthDistance += value["distance"];
       monthTime += value["moving_time"];
       monthAchievements += value["achievement_count"];
     }
   }
   lines.push(
-    `Last month ${
-      formatDistance(monthDistance).padStart(13)
-    } ${
-      (
-        monthAchievements
+    `Last month ${formatDistance(monthDistance).padStart(13)
+    } ${(
+      monthAchievements
         ? `${monthAchievements} achievement${monthAchievements > 1 ? "s" : ""}`
         : ""
-      ).padStart(19)
-    } ${
-      `${(monthTime / 3600).toFixed(0)}`.padStart(3)
-    }:${
-      (monthTime / 60).toFixed(0) % 60
+    ).padStart(19)
+    } ${`${(monthTime / 3600).toFixed(0)}`.padStart(3)
+    }:${(monthTime / 60).toFixed(0) % 60
     }h`
   );
 
