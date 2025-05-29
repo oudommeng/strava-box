@@ -2,6 +2,7 @@ require("dotenv").config();
 const Octokit = require("@octokit/rest");
 const fetch = require("node-fetch");
 const fs = require("fs");
+const path = require("path");
 
 const {
   GIST_ID: gistId,
@@ -14,7 +15,7 @@ const {
   UNITS: units
 } = process.env;
 const API_BASE = "https://www.strava.com/api/v3/athletes/";
-const AUTH_CACHE_FILE = "strava-auth.json";
+const AUTH_CACHE_FILE = path.join(__dirname, "strava-auth.json");
 
 const octokit = new Octokit({
   auth: `token ${githubToken}`
@@ -22,7 +23,8 @@ const octokit = new Octokit({
 
 async function main() {
   const stats = await getStravaStats();
-  await updateGist(stats);
+  const activities = await getRecentActivities();
+  await updateGist(stats, activities);
 }
 
 /**
@@ -81,7 +83,7 @@ async function getStravaToken() {
   console.debug(`ref: ${cache.stravaRefreshToken.substring(0, 6)}`);
 
   // Create directory if needed
-  const dir = require('path').dirname(AUTH_CACHE_FILE);
+  const dir = path.dirname(AUTH_CACHE_FILE);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -98,12 +100,20 @@ async function getStravaToken() {
  */
 async function getStravaStats() {
   const API = `${API_BASE}${stravaAtheleteId}/stats?access_token=${await getStravaToken()}`;
-
   const json = await fetch(API).then(data => data.json());
   return json;
 }
 
-async function updateGist(data) {
+/**
+ * Fetches recent activities from the Strava API
+ */
+async function getRecentActivities() {
+  const API = `https://www.strava.com/api/v3/athlete/activities?access_token=${await getStravaToken()}&per_page=30`;
+  const json = await fetch(API).then(data => data.json());
+  return json;
+}
+
+async function updateGist(data, activities) {
   let gist;
   try {
     gist = await octokit.gists.get({ gist_id: gistId });
@@ -127,7 +137,7 @@ async function updateGist(data) {
 
   let totalDistance = 0;
 
-  let lines = Object.keys(keyMappings).map(activityType => {
+  let activityTypeLines = Object.keys(keyMappings).map(activityType => {
     // Store the activity name and distance
     const { key } = keyMappings[activityType];
     try {
@@ -165,7 +175,46 @@ async function updateGist(data) {
     )} ${barChart} ${pace.padStart(7)}`;
   });
 
-  // Last 4 weeks
+  // Last Activity
+  let lastActivityLines = [];
+  if (activities && activities.length > 0) {
+    const lastActivity = activities[0];
+    const date = new Date(lastActivity.start_date).toLocaleDateString();
+    const distance = formatDistance(lastActivity.distance);
+    const duration = formatDuration(lastActivity.moving_time);
+    const pace = calculatePace(lastActivity.distance, lastActivity.moving_time);
+
+    lastActivityLines = [
+      "Last Activity:",
+      `${lastActivity.name} (${date})`,
+      `Distance: ${distance}, Time: ${duration}, Pace: ${pace}`
+    ];
+  }
+
+  // 7-day stats
+  let weekDistance = 0;
+  let weekTime = 0;
+  let weekCount = 0;
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+  if (activities && activities.length > 0) {
+    activities.forEach(activity => {
+      const activityDate = new Date(activity.start_date);
+      if (activityDate >= oneWeekAgo) {
+        weekDistance += activity.distance;
+        weekTime += activity.moving_time;
+        weekCount++;
+      }
+    });
+  }
+
+  const weekLines = [
+    "7 Days:",
+    `${formatDistance(weekDistance)}, ${weekCount} activities, ${formatDuration(weekTime)}`
+  ];
+
+  // Monthly stats
   let monthDistance = 0;
   let monthTime = 0;
   let monthAchievements = 0;
@@ -176,17 +225,22 @@ async function updateGist(data) {
       monthAchievements += value["achievement_count"];
     }
   }
-  lines.push(
-    `Last month ${formatDistance(monthDistance).padStart(13)
-    } ${(
-      monthAchievements
-        ? `${monthAchievements} achievement${monthAchievements > 1 ? "s" : ""}`
-        : ""
-    ).padStart(19)
-    } ${`${(monthTime / 3600).toFixed(0)}`.padStart(3)
-    }:${(monthTime / 60).toFixed(0) % 60
-    }h`
-  );
+
+  const monthLines = [
+    "Month:",
+    `${formatDistance(monthDistance)}, ${monthAchievements} achievements, ${formatDuration(monthTime)}`
+  ];
+
+  // Combine all sections with proper spacing
+  const allLines = [
+    ...lastActivityLines,
+    "",
+    ...weekLines,
+    "",
+    ...monthLines,
+    "",
+    ...activityTypeLines
+  ];
 
   try {
     // Get original filename to update that same file
@@ -196,7 +250,7 @@ async function updateGist(data) {
       files: {
         [filename]: {
           filename: `Oudom Strava Activity Summary`,
-          content: lines.join("\n")
+          content: allLines.join("\n")
         }
       }
     });
@@ -231,6 +285,32 @@ function formatDistance(distance) {
     default:
       return `${metersToKm(distance)} km`;
   }
+}
+
+/**
+ * Formats duration in seconds to hours and minutes
+ */
+function formatDuration(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return `${hours}:${minutes.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Calculates pace based on distance and time
+ */
+function calculatePace(distance, seconds) {
+  if (!distance || !seconds) return "0:00/km";
+
+  // Calculate minutes per kilometer or mile
+  const distanceInKm = units === "miles" ? distance / 1609.34 : distance / 1000;
+  const paceSeconds = seconds / distanceInKm;
+
+  const paceMinutes = Math.floor(paceSeconds / 60);
+  const paceRemainingSeconds = Math.floor(paceSeconds % 60);
+
+  const unit = units === "miles" ? "mi" : "km";
+  return `${paceMinutes}:${paceRemainingSeconds.toString().padStart(2, '0')}/${unit}`;
 }
 
 function metersToMiles(meters) {
