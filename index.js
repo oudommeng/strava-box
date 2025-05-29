@@ -195,7 +195,7 @@ async function updateGist(data) {
       gist_id: gistId,
       files: {
         [filename]: {
-          filename: `YTD Strava Metrics`,
+          filename: `Oudom Strava`,
           content: lines.join("\n")
         }
       }
